@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="ko" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>학부모상담 예약판</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  <script src="/_sdk/element_sdk.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <style>
+html, body, #root { height: 100%; width: 100%; margin: 0; }
+body { font-family: 'Noto Sans KR', sans-serif; }
+.cell-available-toggle { position: absolute; top: 2px; right: 2px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s; font-size: 10px; }
+.cell-available:hover .cell-available-toggle { opacity: 1; }
+</style>
+  <style>body { box-sizing: border-box; }</style>
+  <script src="/_sdk/data_sdk.js" type="text/javascript"></script>
+ </head>
+ <body class="h-full bg-slate-50">
+  <div id="root" class="h-full overflow-auto bg-gradient-to-br from-emerald-50 via-blue-50 to-indigo-50"></div>
+  <script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const STUDENTS = [
+  "강은지","김가은","김가현","김영훈","김윤석","박세현","박재량","박지원","박환주","변호섭",
+  "서병수","안유찬","양승진","윤초아","이강우","이나경","이지원","이하나","장민준","정라경",
+  "정하진","조수빈","조수연","조한성","조해윤","주하준","주현우","홍혜인"
+];
+
+const PERIODS = [{p:0,t:"08:00"},{p:1,t:"09:10"},{p:2,t:"10:10"},{p:3,t:"11:10"},{p:4,t:"12:10"},{p:5,t:"14:00"},{p:6,t:"15:00"},{p:7,t:"16:00"},{p:8,t:"17:00 (방과후)"},{p:9,t:"17:50 (방과후)"},{p:10,t:"18:40 (방과후)"}];
+
+const WEEKS = [
+  {
+    id: "week1",
+    label: "1주차: 5월 18일~5월 22일",
+    days: [{key:"mon",label:"월(5/18)"},{key:"tue",label:"화(5/19)"},{key:"wed",label:"수(5/20)"},{key:"thu",label:"목(5/21)"},{key:"fri",label:"금(5/22)"}],
+    blocked: {
+      "mon-1":"301생2","mon-2":"303진로","mon-6":"302생2",
+      "tue-2":"303생2","tue-4":"301생2","tue-5":"304생2","tue-7":"108라탐실",
+      "wed-2":"301생2","wed-4":"302생2","wed-6":"303생2",
+      "thu-1":"301생2","thu-2":"303진로","thu-6":"302생2",
+      "fri-1":"107라탐실","fri-3":"304생2"
+    }
+  },
+  {
+    id: "week2",
+    label: "2주차: 5월 25일~5월 29일",
+    days: [{key:"mon",label:"월(5/25)"},{key:"tue",label:"화(5/26)"},{key:"wed",label:"수(5/27)"},{key:"thu",label:"목(5/28)"},{key:"fri",label:"금(5/29)"}],
+    blocked: {
+      "mon-1":"301생2","mon-2":"303진로","mon-6":"302생2",
+      "tue-2":"303생2","tue-4":"301생2","tue-5":"304생2","tue-7":"108라탐실",
+      "wed-2":"301생2","wed-4":"302생2","wed-6":"303생2",
+      "thu-2":"302생2","thu-5":"304생2","thu-6":"303생2",
+      "fri-1":"107라탐실","fri-3":"304생2"
+    }
+  }
+];
+
+function App() {
+  const [currentWeek, setCurrentWeek] = useState('week1');
+  const [available, setAvailable] = useState(() => JSON.parse(localStorage.getItem('consult_available_v2') || '{}'));
+  const [reservations, setReservations] = useState(() => JSON.parse(localStorage.getItem('consult_reservations_v2') || '{}'));
+  const [modal, setModal] = useState(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [title, setTitle] = useState("2026 3-3 학부모상담주간 상담 예약판");
+
+  useEffect(() => { localStorage.setItem('consult_available_v2', JSON.stringify(available)); }, [available]);
+  useEffect(() => { localStorage.setItem('consult_reservations_v2', JSON.stringify(reservations)); }, [reservations]);
+
+  const allReservations = Object.values(reservations).map(r => r.student);
+  const reservedStudents = new Set(allReservations);
+
+  function toggleAvailable(key) {
+    const week = WEEKS.find(w => w.id === currentWeek);
+    const [,day,period] = key.split('-');
+    const blockKey = `${day}-${period}`;
+    if (week.blocked[blockKey]) return;
+    if (reservations[key]) return;
+    setAvailable(prev => {
+      const next = {...prev};
+      if (next[key]) delete next[key]; else next[key] = true;
+      return next;
+    });
+  }
+
+  function openModal(key) {
+    setModal({key, student: reservations[key]?.student || '', method: reservations[key]?.method || '방문', notes: reservations[key]?.notes || '', error: null});
+  }
+
+  function saveReservation() {
+    if (!modal.student) return;
+    
+    // 같은 학생이 이미 예약된 경우 체크
+    if (reservedStudents.has(modal.student) && reservations[modal.key]?.student !== modal.student) {
+      setModal({...modal, error: `${modal.student} 학생은 이미 다른 시간에 예약되어 있습니다.`});
+      return;
+    }
+
+    // 같은 시간대 예약 수 체크
+    const [week, day, period] = modal.key.split('-');
+    const sameTimeReservations = Object.entries(reservations)
+      .filter(([k, v]) => {
+        const [w, d, p] = k.split('-');
+        return w === week && d === day && p === period && k !== modal.key;
+      })
+      .length;
+
+    if (modal.method === '방문' && sameTimeReservations >= 1) {
+      setModal({...modal, error: '방문상담은 한 타임에 1명만 가능합니다. 다른 시간을 선택해주세요.'});
+      return;
+    }
+    if (modal.method === '전화' && sameTimeReservations >= 2) {
+      setModal({...modal, error: '전화상담은 한 타임에 최대 2명까지 가능합니다. 다른 시간을 선택해주세요.'});
+      return;
+    }
+
+    setReservations(prev => ({...prev, [modal.key]: {student: modal.student, method: modal.method, notes: modal.notes}}));
+    setModal(null);
+  }
+
+  function cancelReservation(key) {
+    setReservations(prev => { const n={...prev}; delete n[key]; return n; });
+    setModal(null);
+  }
+
+  function resetAll() {
+    setAvailable({});
+    setReservations({});
+    localStorage.removeItem('consult_available_v2');
+    localStorage.removeItem('consult_reservations_v2');
+    setConfirmReset(false);
+  }
+
+  function getCellInfo(key) {
+    const week = WEEKS.find(w => w.id === currentWeek);
+    const [,day,period] = key.split('-');
+    const blockKey = `${day}-${period}`;
+    if (week.blocked[blockKey]) return {type:'blocked', label:week.blocked[blockKey]};
+    if (reservations[key]) return {type:'reserved', label:`${STUDENTS.indexOf(reservations[key].student)+1} ${reservations[key].student} / ${reservations[key].method}`};
+    if (available[key]) return {type:'available', label:'상담 가능'};
+    return {type:'empty', label:''};
+  }
+
+  const currentWeekData = WEEKS.find(w => w.id === currentWeek);
+  const unreserved = STUDENTS.filter(s => !reservedStudents.has(s));
+
+  return (
+    <div className="w-full min-h-full p-4 md:p-6">
+      <div className="max-w-5xl mx-auto">
+        <div className="bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-2xl p-1 mb-4 shadow-lg">
+          <div className="bg-white rounded-xl p-6">
+            <h1 id="app-title" className="text-2xl md:text-3xl font-bold text-center bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent mb-2">{title}</h1>
+            <p className="text-center text-sm text-slate-600 mb-1">빈 칸을 클릭하여 상담 가능으로 설정 → 초록 칸 클릭하여 예약 배정</p>
+            <p className="text-center text-xs text-slate-500">기타 문의: 담임 양혁준 (010-2742-8307)</p>
+          </div>
+        </div>
+
+        {/* Week Selector */}
+        <div className="flex gap-2 mb-6 justify-center">
+          {WEEKS.map(week => (
+            <button key={week.id} onClick={() => setCurrentWeek(week.id)} className={`px-4 py-2 rounded-lg font-bold transition-all ${currentWeek === week.id ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg' : 'bg-white border-2 border-emerald-200 text-emerald-700 hover:border-emerald-400'}`}>
+              {week.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Timetable */}
+        <div className="bg-white rounded-2xl shadow-lg p-4 mb-6 overflow-x-auto">
+          <table className="w-full border-collapse text-xs md:text-sm min-w-[600px]">
+            <thead>
+              <tr>
+                <th className="border-2 border-emerald-200 bg-gradient-to-r from-emerald-100 to-cyan-100 p-2 w-16 font-bold text-emerald-700">교시</th>
+                {currentWeekData.days.map(d => <th key={d.key} className="border-2 border-emerald-200 bg-gradient-to-r from-emerald-100 to-cyan-100 p-2 font-bold text-emerald-700">{d.label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {PERIODS.map(per => (
+                <tr key={per.p}>
+                  <td className="border border-slate-200 bg-gradient-to-b from-emerald-50 to-cyan-50 p-2 text-center font-bold text-emerald-700">{per.p}교시<br/><span className="text-[10px] text-emerald-600">{per.t}</span></td>
+                  {currentWeekData.days.map(d => {
+                    const key = `${currentWeek}-${d.key}-${per.p}`;
+                    const info = getCellInfo(key);
+                    const bg = info.type==='blocked'?'bg-slate-300 text-slate-600 cursor-not-allowed'
+                      : info.type==='reserved'?'bg-gradient-to-br from-blue-100 to-indigo-100 border-blue-300 text-blue-800 cursor-pointer hover:from-blue-200 hover:to-indigo-200'
+                      : info.type==='available'?'bg-gradient-to-br from-emerald-200 to-cyan-200 border-emerald-400 text-emerald-800 cursor-pointer hover:from-emerald-300 hover:to-cyan-300'
+                      : 'bg-white cursor-pointer hover:bg-slate-50';
+                    return (
+                      <td key={key} className={`border border-slate-200 p-0 text-center transition-all ${bg} relative group ${info.type==='available'?'cell-available':''}`}
+                        onClick={() => {
+                          if (info.type==='blocked') return;
+                          if (info.type==='available') {
+                            openModal(key);
+                          } else if (info.type==='reserved') {
+                            openModal(key);
+                          } else if (info.type==='empty') {
+                            toggleAvailable(key);
+                          }
+                        }}>
+                        <div className="p-2">
+                          {info.type==='blocked'&&<span className="text-[10px] font-semibold">수업<br/>{info.label}</span>}
+                          {info.type==='available'&&<span className="font-bold">상담 가능</span>}
+                          {info.type==='reserved'&&<span className="font-bold text-[11px]">{info.label}</span>}
+                          {info.type==='empty'&&<span className="text-slate-300">클릭</span>}
+                        </div>
+                        {info.type==='available'&&<div className="cell-available-toggle bg-emerald-600/90 text-white text-xs font-bold cursor-pointer hover:bg-emerald-700/90 rounded" onClick={(e) => {e.stopPropagation(); toggleAvailable(key);}}>해제</div>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Reservation list */}
+        <div className="grid md:grid-cols-2 gap-4 mb-6">
+          <div className="bg-white rounded-2xl shadow-lg border-2 border-blue-200 p-4">
+            <h2 className="font-bold text-lg bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-3 flex items-center gap-2"><i data-lucide="calendar-check" style={{width:20,height:20,color:'#2563eb'}}></i> 예약 현황 ({Object.keys(reservations).length}건)</h2>
+            {Object.keys(reservations).length===0?<p className="text-slate-400 text-sm">아직 예약이 없습니다.</p>:
+            <ul className="space-y-2 text-sm">
+              {Object.entries(reservations).map(([key,val])=>{
+                const [week, day, p] = key.split('-');
+                const weekLabel = WEEKS.find(w => w.id === week)?.label;
+                const dayLabel = WEEKS.find(w => w.id === week)?.days.find(d => d.key === day)?.label;
+                return <li key={key} className="flex justify-between items-start bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg px-3 py-2 gap-2 border border-blue-200">
+                  <div className="flex-1 text-sm">
+                    <span className="font-semibold text-blue-700">{weekLabel?.split(':')[0]} {dayLabel} {p}교시</span><br/>
+                    <span className="text-slate-700">{STUDENTS.indexOf(val.student)+1}번 {val.student} ({val.method})</span>
+                    {val.notes && <div className="text-xs text-slate-600 mt-1 bg-white rounded px-2 py-1">비고: {val.notes}</div>}
+                  </div>
+                  <button onClick={()=>cancelReservation(key)} className="text-red-500 hover:text-red-700 text-xs flex-shrink-0 whitespace-nowrap font-semibold hover:bg-red-50 px-2 py-1 rounded transition">취소</button>
+                </li>;
+              })}
+            </ul>}
+          </div>
+          <div className="bg-white rounded-2xl shadow-lg border-2 border-amber-200 p-4">
+            <h2 className="font-bold text-lg bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent mb-3 flex items-center gap-2"><i data-lucide="users" style={{width:20,height:20,color:'#d97706'}}></i> 미예약 학생 ({unreserved.length}명)</h2>
+            <div className="flex flex-wrap gap-2 text-xs">
+              {unreserved.map((s,i)=><span key={s} className="bg-gradient-to-r from-amber-100 to-orange-100 text-amber-800 px-3 py-1.5 rounded-full font-semibold border border-amber-300">{STUDENTS.indexOf(s)+1} {s}</span>)}
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center mb-4">
+          <button onClick={()=>setConfirmReset(true)} className="bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all shadow-md">전체 초기화</button>
+        </div>
+      </div>
+
+      {/* Reset confirm */}
+      {confirmReset && <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl border-2 border-red-200">
+          <p className="text-slate-800 font-bold text-lg mb-4">모든 예약 및 상담 가능 설정을 초기화하시겠습니까?</p>
+          <div className="flex gap-2 justify-end">
+            <button onClick={()=>setConfirmReset(false)} className="px-4 py-2 rounded-lg border-2 border-slate-300 text-sm font-semibold hover:bg-slate-50">취소</button>
+            <button onClick={resetAll} className="px-4 py-2 rounded-lg bg-gradient-to-r from-red-500 to-pink-500 text-white text-sm font-bold hover:from-red-600 hover:to-pink-600">초기화</button>
+          </div>
+        </div>
+      </div>}
+
+      {/* Reservation modal */}
+      {modal && <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl max-h-[90vh] overflow-y-auto border-2 border-emerald-200">
+          <h3 className="font-bold text-lg bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent mb-4">상담 예약 배정</h3>
+          <p className="text-sm text-slate-600 mb-3 font-semibold">
+            {(() => {
+              const [week, day, period] = modal.key.split('-');
+              const weekLabel = WEEKS.find(w => w.id === week)?.label;
+              const dayLabel = WEEKS.find(w => w.id === week)?.days.find(d => d.key === day)?.label;
+              return `${weekLabel?.split(':')[0]} ${dayLabel} ${period}교시`;
+            })()}
+          </p>
+          {modal.error && <p className="text-red-500 text-sm mb-3 font-semibold bg-red-50 p-2 rounded">{modal.error}</p>}
+          <label className="block text-sm font-bold text-slate-700 mb-2">학생</label>
+          <select value={modal.student} onChange={e=>setModal({...modal,student:e.target.value,error:null})} className="w-full border-2 border-emerald-200 rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:border-emerald-500">
+            <option value="">선택</option>
+            {STUDENTS.map((s,i)=><option key={s} value={s}>{i+1} {s}</option>)}
+          </select>
+          <label className="block text-sm font-bold text-slate-700 mb-2">상담 방식</label>
+          <div className="flex gap-4 mb-4 bg-blue-50 p-3 rounded-lg border border-blue-200">
+            <label className="flex items-center gap-2 text-sm font-semibold"><input type="radio" name="method" checked={modal.method==='방문'} onChange={()=>setModal({...modal,method:'방문',error:null})} className="w-4 h-4"/> 방문<span className="text-xs text-blue-600">(1명/타임)</span></label>
+            <label className="flex items-center gap-2 text-sm font-semibold"><input type="radio" name="method" checked={modal.method==='전화'} onChange={()=>setModal({...modal,method:'전화',error:null})} className="w-4 h-4"/> 전화<span className="text-xs text-blue-600">(2명/타임)</span></label>
+          </div>
+          <label className="block text-sm font-bold text-slate-700 mb-2">비고</label>
+          <textarea value={modal.notes} onChange={e=>setModal({...modal,notes:e.target.value})} placeholder="추가 사항 입력..." className="w-full border-2 border-slate-300 rounded-lg px-3 py-2 mb-4 text-sm resize-none h-20 focus:outline-none focus:border-emerald-500"></textarea>
+          <div className="flex gap-2 justify-end">
+            {reservations[modal.key]&&<button onClick={()=>cancelReservation(modal.key)} className="px-3 py-2 rounded-lg bg-red-100 text-red-600 text-sm mr-auto font-bold hover:bg-red-200">예약 취소</button>}
+            <button onClick={()=>setModal(null)} className="px-4 py-2 rounded-lg border-2 border-slate-300 text-sm font-semibold hover:bg-slate-50">닫기</button>
+            <button onClick={saveReservation} className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-white text-sm font-bold hover:from-emerald-600 hover:to-cyan-600">저장</button>
+          </div>
+        </div>
+      </div>}
+    </div>
+  );
+}
+
+ReactDOM.render(<App/>, document.getElementById('root'));
+setTimeout(()=>lucide.createIcons(), 100);
+
+// Element SDK init
+const defaultConfig = { title_text: "2026 3-3 학부모상담주간 상담 예약판", background_color: "#f8fafc", surface_color: "#ffffff", text_color: "#1e293b", primary_action_color: "#059669", secondary_action_color: "#3b82f6", font_family: "Noto Sans KR", font_size: 14 };
+
+window.elementSdk.init({
+  defaultConfig,
+  onConfigChange: async (config) => {
+    const t = document.getElementById('app-title');
+    if (t) t.textContent = config.title_text || defaultConfig.title_text;
+    document.body.style.fontFamily = `${config.font_family || defaultConfig.font_family}, sans-serif`;
+  },
+  mapToCapabilities: (config) => ({
+    recolorables: [
+      {get:()=>config.background_color||defaultConfig.background_color, set:(v)=>{config.background_color=v;window.elementSdk.setConfig({background_color:v})}},
+      {get:()=>config.surface_color||defaultConfig.surface_color, set:(v)=>{config.surface_color=v;window.elementSdk.setConfig({surface_color:v})}},
+      {get:()=>config.text_color||defaultConfig.text_color, set:(v)=>{config.text_color=v;window.elementSdk.setConfig({text_color:v})}},
+      {get:()=>config.primary_action_color||defaultConfig.primary_action_color, set:(v)=>{config.primary_action_color=v;window.elementSdk.setConfig({primary_action_color:v})}},
+      {get:()=>config.secondary_action_color||defaultConfig.secondary_action_color, set:(v)=>{config.secondary_action_color=v;window.elementSdk.setConfig({secondary_action_color:v})}}
+    ],
+    borderables: [],
+    fontEditable: {get:()=>config.font_family||defaultConfig.font_family, set:(v)=>{config.font_family=v;window.elementSdk.setConfig({font_family:v})}},
+    fontSizeable: {get:()=>config.font_size||defaultConfig.font_size, set:(v)=>{config.font_size=v;window.elementSdk.setConfig({font_size:v})}}
+  }),
+  mapToEditPanelValues: (config) => new Map([["title_text", config.title_text || defaultConfig.title_text]])
+});
+</script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9fb836cfb3a9dd08',t:'MTc3ODc0NDAwMC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
